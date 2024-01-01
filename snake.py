@@ -1,109 +1,59 @@
+"""Module for the Snake class."""
 from __future__ import annotations
-from enum import Enum
 import random
 
-import numpy as np
-import pygame as pg
-
-from constants import BOARD_CELL_SIZE, BOARD_SIDE_LENGTH, SNAKE_ENDS_COLORS, SNAKE_INITIAL_LENGTH
-from utils import get_color_gradient
+from constants import SNAKE_INITIAL_LENGTH, MoveDirection
 
 
-class Move(Enum):
-    UP: list[int] = [0, -1]
-    DOWN: list[int] = [0, 1]
-    RIGHT: list[int] = [1, 0]
-    LEFT: list[int] = [-1, 0]
-
-
-class SnakeRect(pg.sprite.Sprite):
-    def __init__(self, x: int, y: int, size: int) -> None:
-        super().__init__()
-
-        print(x, y, size)
-        self.x = x
-        self.y = y
-        self.size = size
-        self.rect = pg.Rect(
-            left=self.x,
-            top=self.y,
-            width=self.size,
-            height=self.size,
-        )
+class Snake:
+    def __init__(self, cells_coords: list[tuple[int, int]]) -> None:
+        self.cells_coords = cells_coords
+        self.current_move_direction = MoveDirection.RIGHT
 
     @property
-    def rect(self) -> pg.Rect:
-        return self.rect
-
-
-class Snake(pg.sprite.Sprite):
-    def __init__(
-        self,
-        rects: list[SnakeRect],
-        area: pg.Rect,
-        rect_size: int = 10,
-    ) -> None:
-        super().__init__()
-        self.area = area
-        self.rects = rects
-        self.current_move: Move = Move.RIGHT
-        self.rect_size = rect_size
-
-    def get_rects(self) -> list[tuple(pg.Color, pg.Rect)]:
-        start, end = SNAKE_ENDS_COLORS
-        rect_colors = get_color_gradient(
-            start=start,
-            end=end,
-            num_colors=len(self.rects),
-        )
-        return [
-            (pg.Color(rect_colors[i]), rect.rect)
-            for i, rect in enumerate(self.rects)
-        ]
-
-    def check_valid_move(self, move: Move) -> bool:
-        return sum(move.value * self.rects[0]) != 0
-
-    def check_collision(self) -> bool:
-        # Check collision with wall
-        max_x, max_y = (
-            self.area.width / self.rect_size - 1,
-            self.area.height / self.rect_size - 1,
-        )
-        head_x, head_y = self.rects[0].x, self.rects[0].y
-        if not (0 <= head_x <= max_x) or not (0 <= head_y <= max_y):
-            return True
-
-        # Check collising with its tail
-        return any(
-            head_x == rect.x and head_y == rect.y
-            for rect in self.rects[1:]
-        )
-
-    def move(self, move: Move | None = None) -> bool:
-        self.move = move if move is not None and self.check_valid_move(move=move) else self.move
-
-        new_x, new_y = (
-            self.rects[0].x + self.move.value[0],
-            self.rects[0].y + self.move.value[1],
-        )
-        self.rects = [
-            SnakeRect(
-                x=new_x,
-                y=new_y,
-                size=self.rect_size,
-            )
-        ] + self.rects[1:-1]
-        return self.check_collision()
+    def cells(self) -> list[tuple[int, int]]:
+        return self.cells_coords
     
+    def __len__(self) -> int:
+        return len(self.cells_coords)
+
+    def add_to_tail(self) -> None:
+        dx, dy = self.current_move_direction.value
+        new_tail_end = (
+            self.cells_coords[-1][0] - dx,
+            self.cells_coords[-1][1] - dy
+        )
+        self.cells_coords.append(new_tail_end)
+    
+    def check_move_direction(self, move_direction: MoveDirection | None) -> MoveDirection:
+        if move_direction is None or move_direction == self.current_move_direction:
+            return self.current_move_direction
+        
+        current_dx, current_dy = self.current_move_direction.value
+        dx, dy = move_direction.value
+
+        if current_dx == -dx or current_dy == -dy:
+            return self.current_move_direction
+        
+        return move_direction
+        
+    def move(self, move_direction: MoveDirection | None):
+        # Check move w.r.t current direction
+        self.current_move_direction = self.check_move_direction(move_direction=move_direction)
+
+        dx, dy = self.current_move_direction.value
+        head_x, head_y = self.cells_coords[0]
+        new_head = (head_x + dx, head_y + dy)
+
+        self.cells_coords = [new_head] + self.cells_coords[:-1]
+
     @classmethod
     def from_starting_length(
         cls,
+        num_grid_cells: int,
         snake_initial_length: int = SNAKE_INITIAL_LENGTH,
-        num_cells: int = BOARD_SIDE_LENGTH,
-        rect_size: int = BOARD_CELL_SIZE,
     ) -> Snake:
-        area_half_width = num_cells // 2
+        area_half_width = num_grid_cells // 2
         if snake_initial_length > area_half_width:
             raise ValueError(
                 "The initial length of the snake cannot be"
@@ -112,34 +62,22 @@ class Snake(pg.sprite.Sprite):
 
         starting_x = random.randint(snake_initial_length+1, area_half_width)
         starting_y = random.randint(
-            num_cells // 3,
-            2 * num_cells // 3
+            num_grid_cells // 3,
+            2 * num_grid_cells // 3
         )
-        return cls.from_rects(
-            rects=[
-                np.array([starting_x-i, starting_y])
-                for i in range(snake_initial_length)
-            ],
-            area=area,
-            rect_size=rect_size,
+        cells_coords = [
+            (starting_x-i, starting_y)
+            for i in range(snake_initial_length)
+        ]
+        return cls.from_coordinates(
+            cells_coords=cells_coords,
         )
 
     @classmethod
-    def from_rects(
+    def from_coordinates(
         cls,
-        rects: list[np.ndarray],
-        area: pg.Rect,
-        rect_size: int = BOARD_CELL_SIZE,
+        cells_coords: list[tuple[int, int]],
     ) -> Snake:
         return cls(
-            rects=[
-                SnakeRect(
-                    x=x,
-                    y=y,
-                    size=rect_size
-                )
-                for x, y in rects
-            ],
-            area=area,
-            rect_size=rect_size,
+            cells_coords=cells_coords,
         )
