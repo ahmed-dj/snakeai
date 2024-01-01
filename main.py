@@ -2,7 +2,7 @@
 from pathlib import Path
 
 from agent import ReinforceAgent
-from snake_game import Game
+from game import Game
 
 
 def main():
